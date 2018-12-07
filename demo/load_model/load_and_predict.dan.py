@@ -1,0 +1,74 @@
+import sys
+import codecs
+import numpy as np
+from keras_bert import load_trained_model_from_checkpoint
+
+
+if len(sys.argv) != 4:
+    print('python load_model.py CONFIG_PATH CHECKPOINT_PATH DICT_PATH')
+
+config_path, checkpoint_path, dict_path = tuple(sys.argv[1:])
+
+model = load_trained_model_from_checkpoint(config_path, checkpoint_path, training=True)
+model.summary(line_length=120)
+
+#tokens = ['[CLS]', '[MASK]', '[MASK]'] + list('是利用符号语言研究数量、结构、变化以及空间等概念的一门学科') + ['[SEP]']
+
+#tokens = ['[CLS]', '[MASK]', '[MASK]'] + "the boy went to the store".split(" ") + ['[SEP]']
+tokens = "[CLS] i went to [MASK] with my [MASK] [SEP]".split(" ")
+
+token_dict = {}
+with codecs.open(dict_path, 'r', 'utf8') as reader:
+    for line in reader:
+        token = line.strip()
+        token_dict[token] = len(token_dict)
+token_dict_rev = {v: k for k, v in token_dict.items()}
+
+token_input = np.asarray([[token_dict[token] for token in tokens] + [0] * (512 - len(tokens))])
+seg_input = np.asarray([[0] * len(tokens) + [0] * (512 - len(tokens))])
+#mask_input = np.asarray([[0, 1, 1] + [0] * (512 - 3)])
+mask_input = np.asarray([[0 if (i > len(tokens) -1  or tokens[i] != '[MASK]') else 1  for i in range(512)]])
+
+print(token_input[0][:len(tokens)])
+
+predicts = model.predict([token_input, seg_input, mask_input])[0]
+predicts_raw = predicts
+print(predicts.shape)
+for ii, i in enumerate(mask_input[0]):
+    if i:
+        top_k = predicts[0,ii].argsort()[-10:][::-1]
+        print(list(map(lambda x: token_dict_rev[x], top_k)))
+        
+predicts = np.argmax(predicts, axis=-1)
+#top_k = predicts_raw.argsort()[-3:][::-1]
+print(predicts[0][:len(tokens)])
+print(list(map(lambda x: token_dict_rev[x], predicts[0][1:len(tokens)])))
+
+
+
+
+
+exit(1)
+
+sentence_1 = '数学是利用符号语言研究數量、结构、变化以及空间等概念的一門学科。'
+sentence_2 = '从某种角度看屬於形式科學的一種。'
+
+tokens = ['[CLS]'] + list(sentence_1) + ['[SEP]'] + list(sentence_2) + ['[SEP]']
+
+token_input = np.asarray([[token_dict[token] for token in tokens] + [0] * (512 - len(tokens))])
+seg_input = np.asarray([[0] * (len(sentence_1) + 2) + [1] * (len(sentence_2) + 1) + [0] * (512 - len(tokens))])
+mask_input = np.asarray([[0] * 512])
+
+predicts = model.predict([token_input, seg_input, mask_input])[1]
+print('%s is random next: ' % sentence_2, bool(np.argmax(predicts, axis=-1)[0]))
+
+sentence_2 = '任何一个希尔伯特空间都有一族标准正交基。'
+
+tokens = ['[CLS]'] + list(sentence_1) + ['[SEP]'] + list(sentence_2) + ['[SEP]']
+
+token_input = np.asarray([[token_dict[token] for token in tokens] + [0] * (512 - len(tokens))])
+seg_input = np.asarray([[0] * (len(sentence_1) + 2) + [1] * (len(sentence_2) + 1) + [0] * (512 - len(tokens))])
+mask_input = np.asarray([[0] * 512])
+
+predicts = model.predict([token_input, seg_input, mask_input])[1]
+print('%s is random next: ' % sentence_2, bool(np.argmax(predicts, axis=-1)[0]))
